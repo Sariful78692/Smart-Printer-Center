@@ -208,7 +208,7 @@ function updatePrintStatus(data) {
   const printStatus = String(data.printStatus || "").trim();
   const printError = String(data.printError || "").trim();
 
-  if (!orderId || !["MANUAL_PRINTING", "PRINTED", "PRINT_FAILED"].includes(printStatus)) {
+  if (!orderId || !["QUEUED", "MANUAL_PRINTING", "PRINTED", "PRINT_FAILED"].includes(printStatus)) {
     throw new Error("Invalid print update");
   }
 

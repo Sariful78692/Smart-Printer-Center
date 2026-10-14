@@ -10,9 +10,15 @@ import os from "node:os";
 import path from "node:path";
 import { google } from "googleapis";
 
+// Allows the agent to run with the same private configuration as the web app.
+// Explicit process environment variables still take precedence.
+try {
+  process.loadEnvFile(path.resolve(".env.local"));
+} catch (error) {
+  if (error.code !== "ENOENT") throw error;
+}
+
 const required = [
-  "PRINT_AGENT_API_URL",
-  "PRINT_AGENT_API_SECRET",
   "PRINT_AGENT_PRINTER",
   "GOOGLE_OAUTH_CLIENT_ID",
   "GOOGLE_OAUTH_CLIENT_SECRET",
@@ -25,8 +31,11 @@ for (const key of required) {
   }
 }
 
-const apiUrl = process.env.PRINT_AGENT_API_URL.trim();
-const apiSecret = process.env.PRINT_AGENT_API_SECRET.trim();
+const apiUrl = (process.env.PRINT_AGENT_API_URL || process.env.GOOGLE_SHEETS_API_URL || "").trim();
+const apiSecret = (process.env.PRINT_AGENT_API_SECRET || process.env.GOOGLE_SHEETS_API_SECRET || "").trim();
+if (!apiUrl || !apiSecret) {
+  throw new Error("Set PRINT_AGENT_API_URL/PRINT_AGENT_API_SECRET or GOOGLE_SHEETS_API_URL/GOOGLE_SHEETS_API_SECRET.");
+}
 const printer = process.env.PRINT_AGENT_PRINTER.trim();
 const pollIntervalMs = positiveInt(process.env.PRINT_AGENT_POLL_INTERVAL_MS, 10000);
 const workDir = path.resolve(process.env.PRINT_AGENT_WORK_DIR || path.join(os.tmpdir(), "smart-printer-center"));
@@ -69,13 +78,14 @@ async function claimNextPrint() {
 
 async function printOrder(order) {
   try {
-    if (!order.fileId) throw new Error("Order has no Google Drive file ID.");
+    const fileId = order.fileId || getDriveFileId(order.fileUrl);
+    if (!fileId) throw new Error("Order has no Google Drive file ID or usable file URL.");
     if (!/\.pdf$/i.test(order.fileName || "")) {
       throw new Error("Only PDF orders can be printed by this agent.");
     }
 
     const localPdf = path.join(workDir, `${safeFilePart(order.orderId)}.pdf`);
-    await downloadPdf(order.fileId, localPdf);
+    await downloadPdf(fileId, localPdf);
     await runSumatra(localPdf, order);
     await callOrderApi({ action: "updatePrint", orderId: order.orderId, printStatus: "PRINTED" });
     console.log(`Printed order ${order.orderId}.`);
@@ -146,6 +156,16 @@ function positiveInt(value, fallback) {
 
 function safeFilePart(value) {
   return String(value).replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function getDriveFileId(fileUrl) {
+  try {
+    const url = new URL(fileUrl);
+    const pathMatch = url.pathname.match(/\/d\/([^/]+)/);
+    return pathMatch?.[1] || url.searchParams.get("id") || "";
+  } catch {
+    return "";
+  }
 }
 
 function delay(ms) {

@@ -14,7 +14,7 @@ export async function PATCH(request, { params }) {
     const { status, printStatus, adminNote = "", adminName = "Admin" } = await request.json();
 
     if (printStatus) {
-      if (!["MANUAL_PRINTING", "PRINTED"].includes(printStatus)) {
+      if (!["QUEUED", "MANUAL_PRINTING", "PRINTED"].includes(printStatus)) {
         return NextResponse.json(
           { success: false, message: "Invalid print status." },
           { status: 400 }

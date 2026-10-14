@@ -129,6 +129,24 @@ export default function AdminPage() {
     await loadOrders();
   }
 
+  async function retryAutoPrint(orderId) {
+    setLoading(true);
+    const response = await fetch(`/api/admin/orders/${orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ printStatus: "QUEUED" }),
+    });
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      setMessage(result.message || "Automatic print could not be queued.");
+      setLoading(false);
+      return;
+    }
+
+    await loadOrders();
+  }
+
   if (!loggedIn) {
     return (
       <main style={{ minHeight: "100vh", padding: "48px 16px", background: "#f1f5f9", fontFamily: "Arial, sans-serif" }}>
@@ -164,8 +182,9 @@ export default function AdminPage() {
             <tbody>{orders.map((order) => {
               const canStartManualPrint = order.status === "APPROVED" && ["", "QUEUED", "PRINT_FAILED"].includes(order.printStatus);
               const canMarkManuallyPrinted = order.printStatus === "MANUAL_PRINTING";
+              const canRetryAutoPrint = order.status === "APPROVED" && order.printStatus === "PRINT_FAILED";
 
-              return <tr key={order.orderId} style={{ borderTop: "1px solid #e2e8f0" }}><td style={{ padding: "12px" }}><strong>{order.customerName}</strong><br /><small>{order.mobile || "No mobile"}</small></td><td><a href={order.fileUrl} target="_blank" rel="noreferrer">{order.fileName}</a><br /><small>{order.createdAt}</small></td><td>{order.pageCount} pages × {order.copies}<br /><small>{order.colorMode}, {order.paperSize}, {order.printSide}</small></td><td>₹{order.totalAmount}</td><td><strong>{order.status}</strong><br /><small>{order.printStatus || "Not queued"}</small><br /><small>{order.adminNote}</small></td><td>{order.status === "PENDING" ? <><button onClick={() => updateOrder(order.orderId, "APPROVED")} disabled={loading} style={{ marginRight: "8px", padding: "8px", border: 0, borderRadius: "6px", background: "#15803d", color: "white" }}>Approve</button><button onClick={() => updateOrder(order.orderId, "REJECTED")} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#b91c1c", color: "white" }}>Reject</button></> : canStartManualPrint ? <button onClick={() => startManualPrint(order)} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#2563eb", color: "white" }}>Manual Print</button> : canMarkManuallyPrinted ? <button onClick={() => markManuallyPrinted(order.orderId)} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#15803d", color: "white" }}>Mark Printed</button> : "Updated"}</td></tr>;
+              return <tr key={order.orderId} style={{ borderTop: "1px solid #e2e8f0" }}><td style={{ padding: "12px" }}><strong>{order.customerName}</strong><br /><small>{order.mobile || "No mobile"}</small></td><td><a href={order.fileUrl} target="_blank" rel="noreferrer">{order.fileName}</a><br /><small>{order.createdAt}</small></td><td>{order.pageCount} pages × {order.copies}<br /><small>{order.colorMode}, {order.paperSize}, {order.printSide}</small></td><td>₹{order.totalAmount}</td><td><strong>{order.status}</strong><br /><small>{order.printStatus || "Not queued"}</small><br /><small>{order.adminNote}</small></td><td>{order.status === "PENDING" ? <><button onClick={() => updateOrder(order.orderId, "APPROVED")} disabled={loading} style={{ marginRight: "8px", padding: "8px", border: 0, borderRadius: "6px", background: "#15803d", color: "white" }}>Approve</button><button onClick={() => updateOrder(order.orderId, "REJECTED")} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#b91c1c", color: "white" }}>Reject</button></> : canRetryAutoPrint ? <><button onClick={() => retryAutoPrint(order.orderId)} disabled={loading} style={{ marginRight: "8px", padding: "8px", border: 0, borderRadius: "6px", background: "#d97706", color: "white" }}>Retry Auto Print</button><button onClick={() => startManualPrint(order)} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#2563eb", color: "white" }}>Manual Print</button></> : canStartManualPrint ? <button onClick={() => startManualPrint(order)} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#2563eb", color: "white" }}>Manual Print</button> : canMarkManuallyPrinted ? <button onClick={() => markManuallyPrinted(order.orderId)} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#15803d", color: "white" }}>Mark Printed</button> : "Updated"}</td></tr>;
             })}</tbody>
           </table>
         </div>
