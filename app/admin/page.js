@@ -89,6 +89,46 @@ export default function AdminPage() {
     await loadOrders();
   }
 
+  async function startManualPrint(order) {
+    setLoading(true);
+    const response = await fetch(`/api/admin/orders/${order.orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ printStatus: "MANUAL_PRINTING" }),
+    });
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      setMessage(result.message || "Manual print could not be started.");
+      setLoading(false);
+      return;
+    }
+
+    window.open(order.fileUrl, "_blank", "noopener,noreferrer");
+    setMessage("Document opened in a new tab. Use Ctrl+P, select the printer and settings, then click Mark Printed.");
+    await loadOrders();
+  }
+
+  async function markManuallyPrinted(orderId) {
+    if (!window.confirm("Confirm that this document was printed manually.")) return;
+
+    setLoading(true);
+    const response = await fetch(`/api/admin/orders/${orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ printStatus: "PRINTED" }),
+    });
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      setMessage(result.message || "Print status could not be updated.");
+      setLoading(false);
+      return;
+    }
+
+    await loadOrders();
+  }
+
   if (!loggedIn) {
     return (
       <main style={{ minHeight: "100vh", padding: "48px 16px", background: "#f1f5f9", fontFamily: "Arial, sans-serif" }}>
@@ -113,7 +153,7 @@ export default function AdminPage() {
     <main style={{ minHeight: "100vh", padding: "32px 16px", background: "#f1f5f9", fontFamily: "Arial, sans-serif" }}>
       <section style={panelStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "center", marginBottom: "20px" }}>
-          <div><h1 style={{ margin: 0, color: "#123b70" }}>Print Orders</h1><p style={{ marginBottom: 0, color: "#64748b" }}>Approve orders after checking the document.</p></div>
+          <div><h1 style={{ margin: 0, color: "#123b70" }}>Print Orders</h1><p style={{ marginBottom: 0, color: "#64748b" }}>Approve orders after checking the document. Manual print opens the document for Ctrl+P.</p></div>
           <button onClick={loadOrders} disabled={loading} style={{ padding: "10px 14px", border: 0, borderRadius: "8px", background: "#123b70", color: "white" }}>Refresh</button>
         </div>
         {message && <p role="status" style={{ color: "#b91c1c" }}>{message}</p>}
@@ -121,7 +161,12 @@ export default function AdminPage() {
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "850px" }}>
             <thead><tr style={{ textAlign: "left", background: "#eff6ff" }}><th style={{ padding: "12px" }}>Customer</th><th>Document</th><th>Print</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
-            <tbody>{orders.map((order) => <tr key={order.orderId} style={{ borderTop: "1px solid #e2e8f0" }}><td style={{ padding: "12px" }}><strong>{order.customerName}</strong><br /><small>{order.mobile || "No mobile"}</small></td><td><a href={order.fileUrl} target="_blank" rel="noreferrer">{order.fileName}</a><br /><small>{order.createdAt}</small></td><td>{order.pageCount} pages × {order.copies}<br /><small>{order.colorMode}, {order.paperSize}, {order.printSide}</small></td><td>₹{order.totalAmount}</td><td><strong>{order.status}</strong><br /><small>{order.adminNote}</small></td><td>{order.status === "PENDING" ? <><button onClick={() => updateOrder(order.orderId, "APPROVED")} disabled={loading} style={{ marginRight: "8px", padding: "8px", border: 0, borderRadius: "6px", background: "#15803d", color: "white" }}>Approve</button><button onClick={() => updateOrder(order.orderId, "REJECTED")} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#b91c1c", color: "white" }}>Reject</button></> : "Updated"}</td></tr>)}</tbody>
+            <tbody>{orders.map((order) => {
+              const canStartManualPrint = order.status === "APPROVED" && ["", "QUEUED", "PRINT_FAILED"].includes(order.printStatus);
+              const canMarkManuallyPrinted = order.printStatus === "MANUAL_PRINTING";
+
+              return <tr key={order.orderId} style={{ borderTop: "1px solid #e2e8f0" }}><td style={{ padding: "12px" }}><strong>{order.customerName}</strong><br /><small>{order.mobile || "No mobile"}</small></td><td><a href={order.fileUrl} target="_blank" rel="noreferrer">{order.fileName}</a><br /><small>{order.createdAt}</small></td><td>{order.pageCount} pages × {order.copies}<br /><small>{order.colorMode}, {order.paperSize}, {order.printSide}</small></td><td>₹{order.totalAmount}</td><td><strong>{order.status}</strong><br /><small>{order.printStatus || "Not queued"}</small><br /><small>{order.adminNote}</small></td><td>{order.status === "PENDING" ? <><button onClick={() => updateOrder(order.orderId, "APPROVED")} disabled={loading} style={{ marginRight: "8px", padding: "8px", border: 0, borderRadius: "6px", background: "#15803d", color: "white" }}>Approve</button><button onClick={() => updateOrder(order.orderId, "REJECTED")} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#b91c1c", color: "white" }}>Reject</button></> : canStartManualPrint ? <button onClick={() => startManualPrint(order)} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#2563eb", color: "white" }}>Manual Print</button> : canMarkManuallyPrinted ? <button onClick={() => markManuallyPrinted(order.orderId)} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#15803d", color: "white" }}>Mark Printed</button> : "Updated"}</td></tr>;
+            })}</tbody>
           </table>
         </div>
         {!loading && orders.length === 0 && <p>No orders found.</p>}

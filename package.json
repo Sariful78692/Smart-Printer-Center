@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "print-agent": "node scripts/windows-print-agent.mjs"
   },
   "dependencies": {
     "googleapis": "^185.0.0",

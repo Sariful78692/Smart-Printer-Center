@@ -36,6 +36,7 @@ yarn-error.log*
 # Google OAuth credentials are private.
 oauth-client.json
 client_secret_*.json
+print-agent/config.json
 
 # vercel
 .vercel

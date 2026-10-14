@@ -11,7 +11,24 @@ export async function PATCH(request, { params }) {
 
   try {
     const { orderId } = await params;
-    const { status, adminNote = "", adminName = "Admin" } = await request.json();
+    const { status, printStatus, adminNote = "", adminName = "Admin" } = await request.json();
+
+    if (printStatus) {
+      if (!["MANUAL_PRINTING", "PRINTED"].includes(printStatus)) {
+        return NextResponse.json(
+          { success: false, message: "Invalid print status." },
+          { status: 400 }
+        );
+      }
+
+      const result = await callOrdersSheet({
+        action: "updatePrint",
+        orderId,
+        printStatus,
+      });
+
+      return NextResponse.json(result);
+    }
 
     if (!['APPROVED', 'REJECTED'].includes(status)) {
       return NextResponse.json(
