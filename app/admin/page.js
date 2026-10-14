@@ -11,41 +11,69 @@ const panelStyle = {
   padding: "24px",
 };
 
+function AdminLoader({ label = "Loading..." }) {
+  return <div className="admin-loader-wrap" role="status"><span className="admin-loader" aria-hidden="true" />{label}</div>;
+}
+
 export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [orders, setOrders] = useState([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeAction, setActiveAction] = useState("");
+  const [sessionChecking, setSessionChecking] = useState(true);
 
-  async function loadOrders() {
+  async function loadOrders(actionKey = "refresh") {
     setLoading(true);
-    const response = await fetch("/api/admin/orders", { cache: "no-store" });
-    const result = await response.json();
+    setActiveAction(actionKey);
 
-    if (!response.ok || !result.success) {
-      setMessage(result.message || "Orders could not be loaded.");
-      setLoggedIn(false);
-    } else {
-      setOrders(result.orders || []);
-      setMessage("");
-      setLoggedIn(true);
+    try {
+      const response = await fetch("/api/admin/orders", { cache: "no-store" });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        setMessage(result.message || "Orders could not be loaded.");
+        if (response.status === 401) {
+          setLoggedIn(false);
+        }
+      } else {
+        setOrders(result.orders || []);
+        setMessage("");
+        setLoggedIn(true);
+      }
+    } catch {
+      setMessage("Orders could not be loaded. Please try again.");
+    } finally {
+      setLoading(false);
+      setActiveAction("");
     }
-
-    setLoading(false);
   }
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      loadOrders();
-    }, 0);
+    async function restoreSession() {
+      try {
+        const response = await fetch("/api/admin/session", { cache: "no-store" });
+        const result = await response.json();
 
-    return () => window.clearTimeout(timeoutId);
+        if (response.ok && result.success) {
+          setLoggedIn(true);
+          await loadOrders("initial-load");
+        }
+      } catch {
+        setMessage("Unable to check the admin session.");
+      } finally {
+        setSessionChecking(false);
+      }
+    }
+
+    restoreSession();
   }, []);
 
   async function login(event) {
     event.preventDefault();
     setLoading(true);
+    setActiveAction("login");
     setMessage("");
 
     const response = await fetch("/api/admin/login", {
@@ -58,11 +86,12 @@ export default function AdminPage() {
     if (!response.ok || !result.success) {
       setMessage(result.message || "Login failed.");
       setLoading(false);
+      setActiveAction("");
       return;
     }
 
     setPassword("");
-    await loadOrders();
+    await loadOrders("login");
   }
 
   async function updateOrder(orderId, status) {
@@ -73,6 +102,8 @@ export default function AdminPage() {
     }
 
     setLoading(true);
+    const actionKey = `${orderId}-${status.toLowerCase()}`;
+    setActiveAction(actionKey);
     const response = await fetch(`/api/admin/orders/${orderId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -83,14 +114,17 @@ export default function AdminPage() {
     if (!response.ok || !result.success) {
       setMessage(result.message || "Order could not be updated.");
       setLoading(false);
+      setActiveAction("");
       return;
     }
 
-    await loadOrders();
+    await loadOrders(actionKey);
   }
 
   async function startManualPrint(order) {
     setLoading(true);
+    const actionKey = `${order.orderId}-manual`;
+    setActiveAction(actionKey);
     const response = await fetch(`/api/admin/orders/${order.orderId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -101,18 +135,21 @@ export default function AdminPage() {
     if (!response.ok || !result.success) {
       setMessage(result.message || "Manual print could not be started.");
       setLoading(false);
+      setActiveAction("");
       return;
     }
 
     window.open(order.fileUrl, "_blank", "noopener,noreferrer");
     setMessage("Document opened in a new tab. Use Ctrl+P, select the printer and settings, then click Mark Printed.");
-    await loadOrders();
+    await loadOrders(actionKey);
   }
 
   async function markManuallyPrinted(orderId) {
     if (!window.confirm("Confirm that this document was printed manually.")) return;
 
     setLoading(true);
+    const actionKey = `${orderId}-printed`;
+    setActiveAction(actionKey);
     const response = await fetch(`/api/admin/orders/${orderId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -123,14 +160,17 @@ export default function AdminPage() {
     if (!response.ok || !result.success) {
       setMessage(result.message || "Print status could not be updated.");
       setLoading(false);
+      setActiveAction("");
       return;
     }
 
-    await loadOrders();
+    await loadOrders(actionKey);
   }
 
   async function retryAutoPrint(orderId) {
     setLoading(true);
+    const actionKey = `${orderId}-retry`;
+    setActiveAction(actionKey);
     const response = await fetch(`/api/admin/orders/${orderId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -141,10 +181,44 @@ export default function AdminPage() {
     if (!response.ok || !result.success) {
       setMessage(result.message || "Automatic print could not be queued.");
       setLoading(false);
+      setActiveAction("");
       return;
     }
 
-    await loadOrders();
+    await loadOrders(actionKey);
+  }
+
+  async function deleteOrder(orderId) {
+    if (!window.confirm("Delete this order permanently? This cannot be undone.")) {
+      return;
+    }
+
+    setLoading(true);
+    const actionKey = `${orderId}-delete`;
+    setActiveAction(actionKey);
+    const response = await fetch(`/api/admin/orders/${orderId}`, {
+      method: "DELETE",
+    });
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      setMessage(result.message || "Order could not be deleted.");
+      setLoading(false);
+      setActiveAction("");
+      return;
+    }
+
+    await loadOrders(actionKey);
+  }
+
+  if (sessionChecking) {
+    return (
+      <main style={{ minHeight: "100vh", padding: "48px 16px", background: "#f1f5f9", fontFamily: "Arial, sans-serif" }}>
+        <section style={{ ...panelStyle, maxWidth: "420px" }}>
+          <AdminLoader label="Checking admin session..." />
+        </section>
+      </main>
+    );
   }
 
   if (!loggedIn) {
@@ -157,8 +231,8 @@ export default function AdminPage() {
               Admin password
               <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required style={{ width: "100%", boxSizing: "border-box", marginTop: "8px", padding: "12px", border: "1px solid #cbd5e1", borderRadius: "8px" }} />
             </label>
-            <button disabled={loading} type="submit" style={{ width: "100%", marginTop: "18px", padding: "12px", border: 0, borderRadius: "8px", background: "#123b70", color: "white", fontWeight: 700 }}>
-              {loading ? "Please wait..." : "Login"}
+            <button className="admin-action-button admin-action-button--blue" disabled={loading} type="submit" style={{ width: "100%", marginTop: "18px", padding: "12px", border: 0, borderRadius: "8px", background: "#123b70", color: "white", fontWeight: 700 }}>
+              {activeAction === "login" ? "Please wait..." : "Login"}
             </button>
           </form>
           {message && <p role="status" style={{ color: "#b91c1c" }}>{message}</p>}
@@ -172,10 +246,10 @@ export default function AdminPage() {
       <section style={panelStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "center", marginBottom: "20px" }}>
           <div><h1 style={{ margin: 0, color: "#123b70" }}>Print Orders</h1><p style={{ marginBottom: 0, color: "#64748b" }}>Approve orders after checking the document. Manual print opens the document for Ctrl+P.</p></div>
-          <button onClick={loadOrders} disabled={loading} style={{ padding: "10px 14px", border: 0, borderRadius: "8px", background: "#123b70", color: "white" }}>Refresh</button>
+          <button className="admin-action-button admin-action-button--blue" onClick={() => loadOrders("refresh")} disabled={loading} style={{ padding: "10px 14px", border: 0, borderRadius: "8px", background: "#123b70", color: "white" }}>{activeAction === "refresh" ? "Loading..." : "Refresh"}</button>
         </div>
         {message && <p role="status" style={{ color: "#b91c1c" }}>{message}</p>}
-        {loading && <p>Loading...</p>}
+        {loading && <div className="admin-loading-overlay"><AdminLoader label="Loading orders..." /></div>}
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "850px" }}>
             <thead><tr style={{ textAlign: "left", background: "#eff6ff" }}><th style={{ padding: "12px" }}>Customer</th><th>Document</th><th>Print</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
@@ -184,7 +258,9 @@ export default function AdminPage() {
               const canMarkManuallyPrinted = order.printStatus === "MANUAL_PRINTING";
               const canRetryAutoPrint = order.status === "APPROVED" && order.printStatus === "PRINT_FAILED";
 
-              return <tr key={order.orderId} style={{ borderTop: "1px solid #e2e8f0" }}><td style={{ padding: "12px" }}><strong>{order.customerName}</strong><br /><small>{order.mobile || "No mobile"}</small></td><td><a href={order.fileUrl} target="_blank" rel="noreferrer">{order.fileName}</a><br /><small>{order.createdAt}</small></td><td>{order.pageCount} pages × {order.copies}<br /><small>{order.colorMode}, {order.paperSize}, {order.printSide}</small></td><td>₹{order.totalAmount}</td><td><strong>{order.status}</strong><br /><small>{order.printStatus || "Not queued"}</small><br /><small>{order.adminNote}</small></td><td>{order.status === "PENDING" ? <><button onClick={() => updateOrder(order.orderId, "APPROVED")} disabled={loading} style={{ marginRight: "8px", padding: "8px", border: 0, borderRadius: "6px", background: "#15803d", color: "white" }}>Approve</button><button onClick={() => updateOrder(order.orderId, "REJECTED")} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#b91c1c", color: "white" }}>Reject</button></> : canRetryAutoPrint ? <><button onClick={() => retryAutoPrint(order.orderId)} disabled={loading} style={{ marginRight: "8px", padding: "8px", border: 0, borderRadius: "6px", background: "#d97706", color: "white" }}>Retry Auto Print</button><button onClick={() => startManualPrint(order)} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#2563eb", color: "white" }}>Manual Print</button></> : canStartManualPrint ? <button onClick={() => startManualPrint(order)} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#2563eb", color: "white" }}>Manual Print</button> : canMarkManuallyPrinted ? <button onClick={() => markManuallyPrinted(order.orderId)} disabled={loading} style={{ padding: "8px", border: 0, borderRadius: "6px", background: "#15803d", color: "white" }}>Mark Printed</button> : "Updated"}</td></tr>;
+              const buttonStyle = { padding: "8px", border: 0, borderRadius: "6px", color: "white" };
+
+              return <tr key={order.orderId} style={{ borderTop: "1px solid #e2e8f0" }}><td style={{ padding: "12px" }}><strong>{order.customerName}</strong><br /><small>{order.mobile || "No mobile"}</small></td><td><a className="admin-document-link" href={order.fileUrl} target="_blank" rel="noreferrer">{order.fileName}</a><br /><small>{order.createdAt}</small></td><td>{order.pageCount} pages × {order.copies}<br /><small>{order.colorMode}, {order.paperSize}, {order.printSide}</small></td><td>₹{order.totalAmount}</td><td><strong>{order.status}</strong><br /><small>{order.printStatus || "Not queued"}</small><br /><small>{order.adminNote}</small></td><td>{order.status === "PENDING" ? <><button className="admin-action-button admin-action-button--green" onClick={() => updateOrder(order.orderId, "APPROVED")} disabled={loading} style={{ ...buttonStyle, marginRight: "8px", background: "#15803d" }}>{activeAction === `${order.orderId}-approved` ? "Loading..." : "Approve"}</button><button className="admin-action-button admin-action-button--red" onClick={() => updateOrder(order.orderId, "REJECTED")} disabled={loading} style={{ ...buttonStyle, marginRight: "8px", background: "#b91c1c" }}>{activeAction === `${order.orderId}-rejected` ? "Loading..." : "Reject"}</button></> : canRetryAutoPrint ? <><button className="admin-action-button admin-action-button--orange" onClick={() => retryAutoPrint(order.orderId)} disabled={loading} style={{ ...buttonStyle, marginRight: "8px", background: "#d97706" }}>{activeAction === `${order.orderId}-retry` ? "Loading..." : "Retry Auto Print"}</button><button className="admin-action-button admin-action-button--blue" onClick={() => startManualPrint(order)} disabled={loading} style={{ ...buttonStyle, marginRight: "8px", background: "#2563eb" }}>{activeAction === `${order.orderId}-manual` ? "Loading..." : "Manual Print"}</button></> : canStartManualPrint ? <button className="admin-action-button admin-action-button--blue" onClick={() => startManualPrint(order)} disabled={loading} style={{ ...buttonStyle, marginRight: "8px", background: "#2563eb" }}>{activeAction === `${order.orderId}-manual` ? "Loading..." : "Manual Print"}</button> : canMarkManuallyPrinted ? <button className="admin-action-button admin-action-button--green" onClick={() => markManuallyPrinted(order.orderId)} disabled={loading} style={{ ...buttonStyle, marginRight: "8px", background: "#15803d" }}>{activeAction === `${order.orderId}-printed` ? "Loading..." : "Mark Printed"}</button> : "Updated"}<button className="admin-action-button admin-action-button--slate" onClick={() => deleteOrder(order.orderId)} disabled={loading} style={{ ...buttonStyle, background: "#475569" }}>{activeAction === `${order.orderId}-delete` ? "Loading..." : "Delete"}</button></td></tr>;
             })}</tbody>
           </table>
         </div>

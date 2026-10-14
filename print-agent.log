@@ -1,0 +1,5 @@
+
+> smart-printer-center@0.1.0 print-agent
+> node scripts/windows-print-agent.mjs
+
+Print agent started. Printer: Canon G2010 series. Poll interval: 10000 ms.

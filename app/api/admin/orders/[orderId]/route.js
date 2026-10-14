@@ -57,3 +57,27 @@ export async function PATCH(request, { params }) {
     );
   }
 }
+
+export async function DELETE(request, { params }) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json(
+      { success: false, message: "Admin login required." },
+      { status: 401 }
+    );
+  }
+
+  try {
+    const { orderId } = await params;
+    const result = await callOrdersSheet({ action: "delete", orderId });
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("Deleting order failed:", error.message);
+    return NextResponse.json(
+      {
+        success: false,
+        message: error.message || "Order could not be deleted.",
+      },
+      { status: 502 }
+    );
+  }
+}

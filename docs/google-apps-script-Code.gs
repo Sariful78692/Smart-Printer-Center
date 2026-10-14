@@ -36,6 +36,7 @@ function doPost(e) {
     if (action === "updateStatus") return updateOrderStatus(data);
     if (action === "claimNextPrint") return claimNextPrint();
     if (action === "updatePrint") return updatePrintStatus(data);
+    if (action === "delete") return deleteOrder(data);
 
     throw new Error("Unknown request action");
   } catch (error) {
@@ -226,6 +227,20 @@ function updatePrintStatus(data) {
   sheet.getRange(match.getRow(), 18).setValue(now);
 
   return jsonResponse({ success: true, orderId, printStatus });
+}
+
+function deleteOrder(data) {
+  const orderId = String(data.orderId || "").trim();
+  if (!orderId) throw new Error("Order ID is required");
+
+  const sheet = getOrdersSheet();
+  const match = sheet.getRange(2, 1, Math.max(sheet.getLastRow() - 1, 1), 1)
+    .createTextFinder(orderId).matchEntireCell(true).findNext();
+
+  if (!match) throw new Error("Order not found");
+
+  sheet.deleteRow(match.getRow());
+  return jsonResponse({ success: true, orderId, message: "Order deleted" });
 }
 
 function safeCell(value) {
