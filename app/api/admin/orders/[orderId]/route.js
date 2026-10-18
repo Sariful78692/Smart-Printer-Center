@@ -11,7 +11,7 @@ export async function PATCH(request, { params }) {
 
   try {
     const { orderId } = await params;
-    const { status, printStatus, adminNote = "", adminName = "Admin" } = await request.json();
+    const { status, printStatus, adminNote = "", adminName = "Admin", printerName = "" } = await request.json();
 
     if (printStatus) {
       if (!["QUEUED", "MANUAL_PRINTING", "PRINTED"].includes(printStatus)) {
@@ -43,6 +43,7 @@ export async function PATCH(request, { params }) {
       status,
       adminNote,
       adminName,
+      printerName,
     });
 
     return NextResponse.json(result);
@@ -72,10 +73,13 @@ export async function DELETE(request, { params }) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("Deleting order failed:", error.message);
+    const message = error.message === "Unknown request action"
+      ? "Delete is not enabled in the deployed Google Apps Script yet. Redeploy the latest docs/google-apps-script-Code.gs web app, then try again."
+      : error.message || "Order could not be deleted.";
     return NextResponse.json(
       {
         success: false,
-        message: error.message || "Order could not be deleted.",
+        message,
       },
       { status: 502 }
     );

@@ -112,6 +112,8 @@ async function downloadPdf(fileId, destination) {
 }
 
 function runSumatra(pdfPath, order) {
+  const targetPrinter = String(order.printerName || printer).trim();
+  if (!targetPrinter) throw new Error("No printer was selected for this order.");
   const settings = [
     `copies=${positiveInt(order.copies, 1)}`,
     order.colorMode === "Colour" ? "color" : "monochrome",
@@ -123,7 +125,7 @@ function runSumatra(pdfPath, order) {
     const child = spawn(sumatraPath, [
       "-silent",
       "-exit-on-print",
-      "-print-to", printer,
+      "-print-to", targetPrinter,
       "-print-settings", settings,
       pdfPath,
     ], { windowsHide: true });

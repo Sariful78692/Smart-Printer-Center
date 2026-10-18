@@ -161,7 +161,9 @@ export async function POST(request) {
       orderId: result.orderId,
       status: "PENDING",
       paymentStatus: "OFF",
-      estimatedAmount: totalAmount,
+      estimatedAmount: Number.isFinite(result.estimatedAmount)
+        ? result.estimatedAmount
+        : totalAmount,
       message: "Your print request has been submitted.",
     });
   } catch (error) {
